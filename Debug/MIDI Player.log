@@ -1,0 +1,7 @@
+﻿  main.cpp
+D:\project\[搁浅]\github\MIDI Player\include\midi.h(256,51): warning C4244: “初始化”: 从“uint64_t”转换到“unsigned int”，可能丢失数据
+D:\project\[搁浅]\github\MIDI Player\include\midi.h(258,46): warning C4244: “参数”: 从“uint64_t”转换到“int”，可能丢失数据
+D:\project\[搁浅]\github\MIDI Player\include\midi.h(352,31): warning C4018: “<”: 有符号/无符号不匹配
+D:\project\[搁浅]\github\MIDI Player\include\midi.h(360,35): warning C4018: “<”: 有符号/无符号不匹配
+D:\project\[搁浅]\github\MIDI Player\include\midi.h(288): warning C4715: “MIDI::Midi::parse”: 不是所有的控件路径都返回值
+  MIDI Player.vcxproj -> D:\project\[搁浅]\github\MIDI Player\Debug\MIDI Player.exe
