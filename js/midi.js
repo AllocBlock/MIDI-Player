@@ -12,7 +12,21 @@ var EventType = {
 
 /* TODO: 元事件 */
 var EventMetaType = {
-
+    SEQUENCE_NUMBER : 0x00,
+    TEXT : 0x01,
+    COPYRIGHT_NOTICE : 0x02,
+    SEQUENCE_OR_TRACK_NAME : 0x03,
+    INSTRUMENT_NAME : 0x04,
+    LYRIC : 0x05,
+    MARKER : 0x06,
+    CUE_POINT : 0x07,
+    MIDI_CHANNEL_PREFIX : 0x20,
+    END_OF_TRACK : 0x2F,
+    SET_TEMPO : 0x51, // FF 51 03 tttttt
+    SMPTE_OFFSET : 0x54,
+    TIME_SIGNATURE : 0x58,
+    KEY_SIGNATURE : 0x59,
+    SEQUENCER_SPECIFIC_META_EVENT : 0x7F,
 };
 
 
@@ -44,6 +58,16 @@ class Reader {
     readuInt16() {
         // 大端！
         var res = this.readByte();
+        res <<= 8;
+        res += this.readByte();
+        return res;
+    }
+
+    readuInt24() {
+        // 大端！
+        var res = this.readByte();
+        res <<= 8;
+        res += this.readByte();
         res <<= 8;
         res += this.readByte();
         return res;
@@ -104,9 +128,8 @@ class MidiPlayer{
         var e = self.midi.tracks[iTrack].events[iEvent];
         switch(e.method & 0xf0){
             case EventType.NOTE_OFF:{
-                //console.log("event: track[", iTrack, "] stop note ", e.param1, ", veclocity: ", e.param2);
-
-                var note = e.param1, velocity = e.param2;
+                var tTrack = (e.method & 0x0f), note = e.param1, velocity = e.param2;
+                //console.log("事件: 源自轨道[", iTrack, "]，轨道", tTrack, "松开音符", note, "力度", velocity);
 
                 self.audioSource[note].volume = velocity / 255;
                 if (!self.audioSource[note].paused){
@@ -116,9 +139,8 @@ class MidiPlayer{
                 break;
             }
             case EventType.NOTE_ON:{
-                console.log("event: track[", iTrack, "] play note ", e.param1, ", veclocity: ", e.param2);
-
-                var note = e.param1, velocity = e.param2;
+                var tTrack = (e.method & 0x0f), note = e.param1, velocity = e.param2;
+                console.log("事件: 源自轨道[", iTrack, "]，轨道", tTrack, "按下音符", note, "力度", velocity);
 
                 self.audioSource[note].volume = velocity / 255;
                 if (self.audioSource[note].paused){
@@ -129,23 +151,119 @@ class MidiPlayer{
                 }
                 break;
             }
+            case EventType.NOTE_AFTERTOUCH:{
+                var tTrack = (e.method & 0x0f), note = e.param1, velocity = e.param2;
+                console.log("事件: 源自轨道[", iTrack, "]，轨道", tTrack, "Aftertouch音符", note, "力度: ", velocity, "（未处理）");
+                break;
+            }
+            case EventType.CONTROL_CHANGE:{
+                var tTrack = (e.method & 0x0f), controllerNumber = e.param1, newVal = e.param2;
+                console.log("事件: 源自轨道[", iTrack, "]，轨道", tTrack, "控制器改变", controllerNumber, "新值", newVal, "（未处理）");
+                break;
+            }
+            case EventType.PROGRAM_CHANGE:{
+                var tTrack = (e.method & 0x0f), newProgramNumer = e.param1;
+                console.log("事件: 源自轨道[", iTrack, "]，轨道", tTrack, "程序改变？ ", newProgramNumer, "（未处理）");
+                break;
+            }
+            case EventType.CHANNEL_PRESSURE:{
+                var tTrack = (e.method & 0x0f), pressureVal = e.param1;
+                console.log("事件: 源自轨道[", iTrack, "]，轨道", tTrack, "声轨压力？ ", pressureVal, "（未处理）");
+                break;
+            }
+            case EventType.PITCH_WHEEL_CHANGE:{
+                var tTrack = (e.method & 0x0f), newVal = e.param1 << 7 + e.param2;
+                console.log("事件: 源自轨道[", iTrack, "]，轨道", tTrack, "弯音轮改变", newVal, "（未处理）");
+                break;
+            }
             case EventType.SYSEX_OR_META_EVENT:{
-                if (e.method == 0xff){ // 元事件
+                if (e.method == 0xf0){ // 元事件
+                    console.log("事件: 轨道[", iTrack, "] sysex起始 长度", e.length, "数据", e.data);
+                }
+                else if (e.method == 0xf7){ // sysex起始
+                    console.log("事件: 轨道[", iTrack, "] sysex后续 长度", e.length, "数据", e.data);
+                }
+                else if (e.method == 0xff){ // 元事件
                     switch(e.metaType){
-                        case 0x51:{ // Tempo change
+                        case EventMetaType.SEQUENCE_NUMBER:{
+                            console.log("事件: 轨道[", iTrack, "] 序列号（未处理）", e.data);
+                            break;
+                        }
+                        case EventMetaType.TEXT:{
+                            console.log("事件: 轨道[", iTrack, "] 文本（未处理）", String.fromCharCode.apply(null, e.data));
+                            break;
+                        }
+                        case EventMetaType.COPYRIGHT_NOTICE:{
+                            console.log("事件: 轨道[", iTrack, "] 版权声明（未处理）", String.fromCharCode.apply(null, e.data));
+                            break;
+                        }
+                        case EventMetaType.SEQUENCE_OR_TRACK_NAME:{
+                            console.log("事件: 轨道[", iTrack, "] 序列/轨道名称（未处理）", String.fromCharCode.apply(null, e.data));
+                            break;
+                        }
+                        case EventMetaType.INSTRUMENT_NAME:{
+                            console.log("事件: 轨道[", iTrack, "] 乐器（未处理）", String.fromCharCode.apply(null, e.data));
+                            break;
+                        }
+                        case EventMetaType.LYRIC:{
+                            console.log("事件: 轨道[", iTrack, "] 歌词（未处理）", String.fromCharCode.apply(null, e.data));
+                            break;
+                        }
+                        case EventMetaType.MARKER:{
+                            console.log("事件: 轨道[", iTrack, "] 标记（未处理）", String.fromCharCode.apply(null, e.data));
+                            break;
+                        }
+                        case EventMetaType.CUE_POINT:{
+                            console.log("事件: 轨道[", iTrack, "] CUE点（未处理）", String.fromCharCode.apply(null, e.data));
+                            break;
+                        }
+                        case EventMetaType.MIDI_CHANNEL_PREFIX:{
+                            console.log("事件: 轨道[", iTrack, "] MIDI声道前缀（未处理）", e.data);
+                            break;
+                        }
+                        case EventMetaType.END_OF_TRACK:{
+                            console.log("事件: 轨道[", iTrack, "] 轨道结束（未处理）");
+                            break;
+                        }
+                        case EventMetaType.SET_TEMPO:{
                             var division = self.midi.header.division;
                             var usPerTap = (e.data[0] << 16) + (e.data[1] << 8) + e.data[2];
                             if (division >> 7 == 0){ // tick模式
                                 self.msPerTick = usPerTap / (division & 0x7f) / 1000;
                             }
                             else{
-                               throw("SYSEX not supported yet");
+                               throw("Midi文件为SYSEX格式，该格式的解析还未实现！");
                             }
-                            console.log("event: track[", iTrack, "] change tempo, msPerTick = ", self.msPerTick);
+                            console.log("事件: 轨道[", iTrack, "] 改变节拍 msPerTick = ", self.msPerTick);
+                            break;
+                        }
+                        case EventMetaType.SMPTE_OFFSET:{
+                            console.log("事件: 轨道[", iTrack, "] SMPTE偏移量（未处理）", e.data);
+                            break;
+                        }
+                        case EventMetaType.TIME_SIGNATURE:{
+                            console.log("事件: 轨道[", iTrack, "] 时间标记（未处理）", e.data);
+                            break;
+                        }
+                        case EventMetaType.KEY_SIGNATURE:{
+                            console.log("事件: 轨道[", iTrack, "] 乐符标记（未处理）", e.data);
+                            break;
+                        }
+                        case EventMetaType.SEQUENCER_SPECIFIC_META_EVENT:{
+                            console.log("事件: 轨道[", iTrack, "] Sequencer Specific Meta-Event（未处理）", e.data);
+                            break;
+                        }
+                        default:{
+                            console.log("事件: 轨道[", iTrack, "] 未定义/未实现处理的 元事件", e.method, e.metaType);
                             break;
                         }
                     }
                 }
+                break;
+            }
+            default: {
+                console.log("事件: 轨道[", iTrack, "] 未定义/未实现处理的 事件", e.method);
+                break;
             }
         }
     }
@@ -265,16 +383,42 @@ function parseMidi(binFile) {
                 }
                 case EventType.SYSEX_OR_META_EVENT: // sysex event or meta event
                 {
-                    if (event.method == 0xff) { // 元事件
+                    if (event.method == 0xf0 || event.method == 0xf7) { // sysex事件
+                        event.length = reader.readVLQ(); // 长度
+                        event.data = reader.read(event.length); // 数据
+                    }
+                    else if (event.method == 0xff) { // 元事件
                         event.metaType = reader.readByte(); // 种类
-                        if (event.metaType == 0x00) { // 设置轨道音序，只有他数据长度字段是两字节，其他都是动态字节
-                            event.length = reader.readuInt16();
-                        }
-                        else {
-                            event.length = reader.readVLQ();
-                        }
-                        if (event.length > 0) { // 如果长度不为0
-                            event.data = reader.read(event.length); // 数据
+
+                        switch(event.metaType){
+                            case EventMetaType.SEQUENCE_NUMBER: // FF 00 02 ssss
+                            case EventMetaType.MIDI_CHANNEL_PREFIX: // FF 20 01 cc
+                            case EventMetaType.END_OF_TRACK: // FF 2F 00
+                            case EventMetaType.SET_TEMPO: // FF 51 03 tttttt
+                            case EventMetaType.SMPTE_OFFSET: // FF 54 05 HR MN SE FR FF
+                            case EventMetaType.TIME_SIGNATURE: // FF 58 04 nn dd cc bb
+                            case EventMetaType.KEY_SIGNATURE:{ // FF 59 02 SD MI
+                                event.length = reader.readByte();
+                                if (event.length > 0)
+                                    event.data = reader.read(event.length);
+                                break;
+                            }
+                            case EventMetaType.TEXT: // FF 01 len text
+                            case EventMetaType.COPYRIGHT_NOTICE: // FF 02 len text
+                            case EventMetaType.SEQUENCE_OR_TRACK_NAME: // FF 03 len text
+                            case EventMetaType.INSTRUMENT_NAME: // FF 04 len text
+                            case EventMetaType.LYRIC: // FF 05 len text
+                            case EventMetaType.MARKER: // FF 06 len text
+                            case EventMetaType.CUE_POINT: // FF 07 len text
+                            case EventMetaType.SEQUENCER_SPECIFIC_META_EVENT:{ // ff 7f len data
+                                event.length = reader.readVLQ();
+                                event.data = reader.read(event.length);
+                                break;
+                            }
+                            default:{
+                                console.log("事件: 轨道[", iTrack, "] 未定义/未实现处理的 元事件 ", e.method, e.metaType);
+                                break;
+                            }
                         }
                     }
                     else{
