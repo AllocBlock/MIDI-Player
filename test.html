@@ -7,6 +7,9 @@
 		<script src="js/test.js"></script>
 	</head>
 	<body>
-		<input type="file" onclick="clickFileSelect(this)" onchange="clickFileSelected(this)" />
+		<input type="file" onclick="clickFileSelect(event)" onchange="clickFileSelected(event)" />
+		<input type="button" value="播放" onclick="play()">
+		<input type="button" value="暂停" onclick="pause()">
+		<input type="button" value="停止" onclick="stop()">
 	</body>
 </html>

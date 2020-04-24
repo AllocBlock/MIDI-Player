@@ -1,3 +1,4 @@
+/* TODO: 事件类型枚举 */
 var EventType = {
     NOTE_OFF : 0x80,
     NOTE_ON : 0x90,
@@ -9,10 +10,13 @@ var EventType = {
     SYSEX_OR_META_EVENT : 0xF0
 };
 
+/* TODO: 元事件 */
 var EventMetaType = {
 
 };
 
+
+/* 读取器，方便从ArrayBuffer里读取指定的数据 */
 class Reader {
     constructor(binFile) {
         this.f = binFile;
@@ -81,6 +85,129 @@ class Reader {
     }
 };
 
+/* midi播放器 */
+class MidiPlayer{
+    constructor(midi, audioSource) {
+        this.midi = midi;
+        this.audioSource = audioSource;
+        this.cTime = 0;
+        this.pEvent = [];
+        this.timer = null; // 定时器
+        this.isPlaying = false;
+        for (var i = 0; i < this.midi.header.ntrack; i++){
+            this.pEvent.push(0);
+        }
+        this.msPerTick = -1; // 不应该设为0，因为涉及除0的问题..
+    }
+
+    runEvent(self, iTrack, iEvent){
+        var e = self.midi.tracks[iTrack].events[iEvent];
+        switch(e.method & 0xf0){
+            case EventType.NOTE_OFF:{
+                //console.log("event: track[", iTrack, "] stop note ", e.param1, ", veclocity: ", e.param2);
+
+                var note = e.param1, velocity = e.param2;
+
+                self.audioSource[note].volume = velocity / 255;
+                if (!self.audioSource[note].paused){
+                    self.audioSource[note].pause();
+                    self.audioSource[note].currentTime = 0;
+                }
+                break;
+            }
+            case EventType.NOTE_ON:{
+                console.log("event: track[", iTrack, "] play note ", e.param1, ", veclocity: ", e.param2);
+
+                var note = e.param1, velocity = e.param2;
+
+                self.audioSource[note].volume = velocity / 255;
+                if (self.audioSource[note].paused){
+                    self.audioSource[note].play();
+                }
+                else{
+                    self.audioSource[note].currentTime = 0;
+                }
+                break;
+            }
+            case EventType.SYSEX_OR_META_EVENT:{
+                if (e.method == 0xff){ // 元事件
+                    switch(e.metaType){
+                        case 0x51:{ // Tempo change
+                            var division = self.midi.header.division;
+                            var usPerTap = (e.data[0] << 16) + (e.data[1] << 8) + e.data[2];
+                            if (division >> 7 == 0){ // tick模式
+                                self.msPerTick = usPerTap / (division & 0x7f) / 1000;
+                            }
+                            else{
+                               throw("SYSEX not supported yet");
+                            }
+                            console.log("event: track[", iTrack, "] change tempo, msPerTick = ", self.msPerTick);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    tick(self){
+        var cTick = Math.floor(self.cTime / self.msPerTick);
+        var isAllFinished = true;
+        for (var i = 0; i < self.midi.header.ntrack; i++){
+            var iTrack = i, iEvent = self.pEvent[i];
+
+            var cEvent = self.midi.tracks[iTrack].events[iEvent];
+            while(1){
+                if (iEvent >= self.midi.tracks[iTrack].events.length) {
+                    break;
+                }
+                if (cEvent.aTime > cTick) {
+                    isAllFinished = false;
+                    break;
+                }
+                self.runEvent(self, iTrack, iEvent);
+                self.pEvent[i]++;
+                iEvent++;
+                cEvent = self.midi.tracks[i].events[iEvent];
+            }
+        }
+        if (isAllFinished){ // 播放完毕
+            console.log("播放完毕");
+            self.stop();
+        }
+        var cTime = Date.now();
+        self.cTime += cTime - self.lastTime;
+        self.lastTime = cTime;
+    }
+
+    play(){
+        if (!this.isPlaying){
+            var timeout = 1; // 定时器延时
+            this.lastTime = Date.now();
+            this.isPlaying = true;
+            this.timer = setInterval(this.tick, timeout, this);
+        }
+        
+    }
+
+    pause(){
+        if (this.isPlaying){
+            this.isPlaying = false;
+            clearInterval(this.timer);
+        }
+    }
+
+    stop(){
+        this.pause();
+        this.cTime = 0;
+        this.pEvent = [];
+        for (var i = 0; i < this.midi.header.ntrack; i++){
+            this.pEvent.push(0);
+        }
+    }
+}
+
+/* 解析midi文件 */
 function parseMidi(binFile) {
     var reader = new Reader(binFile);
     // 读取header
@@ -110,10 +237,13 @@ function parseMidi(binFile) {
         }
 
         var targetPos = reader.pos() + track.length;
+        var aTime = 0;
         // 读取音频数据
         while (targetPos > reader.pos()) {
             event = {};
             event.dTime = reader.readVLQ();
+            event.aTime = aTime + event.dTime;
+            aTime += event.dTime;
             event.method = reader.readByte();
             // AX，A指代动作，X表示目标轨道
             switch (event.method & 0xF0) {
@@ -169,3 +299,5 @@ function parseMidi(binFile) {
     }
     return midi;
 }
+
+
