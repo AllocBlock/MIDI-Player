@@ -3,13 +3,51 @@
 	<head>
 		<meta charset="utf-8">
 		<title>MIDI播放器~</title>
+		<script src="js/common/webgl-utils.js"></script>
+		<script src="js/common/initShaders.js"></script>
+		<script src="js/common/MV.js"></script>
 		<script src="js/midi.js"></script>
 		<script src="js/test.js"></script>
+		<script id="vertex-shader" type="x-shader/x-vertex">
+
+		attribute vec3 vPosition;
+		attribute vec3 vColor;
+
+		varying vec4 fColor;
+
+		uniform mat4 modelViewMatrix;
+		uniform mat4 projectionMatrix;
+
+		void main()
+		{
+			
+			gl_Position = projectionMatrix * modelViewMatrix * vec4(vPosition, 1.0);
+			//gl_Position = vec4(vPosition, 1.0);
+			fColor = vec4(vColor, 1.0);
+
+		}
+		</script>
+
+		<script id="fragment-shader" type="x-shader/x-fragment">
+		precision mediump float;
+
+		varying vec4 fColor;
+
+		void main()
+		{
+			gl_FragColor = fColor;
+		}
+		</script>
 	</head>
 	<body>
-		<input type="file" onclick="clickFileSelect(event)" onchange="clickFileSelected(event)" />
-		<input type="button" value="播放" onclick="play()">
-		<input type="button" value="暂停" onclick="pause()">
-		<input type="button" value="停止" onclick="stop()">
+		<div>
+			<input type="file" onclick="clickFileSelect(event)" onchange="clickFileSelected(event)" />
+			<input type="button" value="播放" onclick="play()">
+			<input type="button" value="暂停" onclick="pause()">
+			<input type="button" value="停止" onclick="stop()">
+		</div>
+		<div>
+			<canvas id="gl-canvas" width="800" height="600"></canvas>
+		</div>
 	</body>
 </html>
