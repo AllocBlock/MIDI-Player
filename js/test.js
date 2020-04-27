@@ -1,5 +1,16 @@
+/* 公共函数 */
+function lerp(a, b, u, accuracy){ // 线性插值
+    if (Math.abs(b - a) < accuracy) return b;
+    else return a + (b - a) * u; 
+}
+
+function angleToDeg(a){
+    return a * Math.PI / 180;
+}
+
+
 var isFileLoading = false;
-/* 选择文件 */
+/* 选择文件框 */
 function clickFileSelect(e){
     // 如果正在加载，则暂时禁止选择文件
     if (isFileLoading){
@@ -14,7 +25,7 @@ function clickFileSelect(e){
     }
     e.currentTarget.value = "";
 }
-
+/* 选择文件 */
 function clickFileSelected(e){
     readFile(e.currentTarget.files[0]);
 }
@@ -47,8 +58,6 @@ function readFile(file){
             midiPlayer = new MidiPlayer(midi, audioSource);
             midiPlayer.play();
             updateModel(); // 更新3D模型
-            //绘制
-            render();
         }
         else{
             console.log("midi解析失败！");
@@ -149,13 +158,16 @@ var program;
 var projectionMode = 1;
 const near = 0.01;
 const far = 10;
+const up = vec3(0.0, 1.0, 0.0); // y-up
 
-var modelViewMatrix, projectionMatrix;
-var modelViewMatrixLoc, projectionMatrixLoc;
+// 相机动态参数
+var cPhi = 0.0;
+var maxPhi = 15, minPhi = -15;
+var tPhi = 0.0; // 目标角度，用于实现平滑过渡
 
 
-var up = vec3(0.0, 1.0, 0.0); // y-up
 
+var modelViewMatrixLoc, projectionMatrixLoc, cTickLoc, rangeLoc;
 // 参数设置
 
 // var scale = 1.0; //画面缩放
@@ -167,9 +179,15 @@ var up = vec3(0.0, 1.0, 0.0); // y-up
 // 数据
 var pointArray = [];
 var colorArray = [];
-var vBuffer, cBuffer;
+var normalArray = [];
+var markArray = [];
+var vBuffer, cBuffer, markBuffer;
 
-window.onload = function init() {
+window.onload = function(){
+    init();
+}
+
+function init() {
     canvas = document.getElementById("gl-canvas"); // 获取canvas标签
 
     gl = WebGLUtils.setupWebGL(canvas);
@@ -184,7 +202,7 @@ window.onload = function init() {
     gl.enable(gl.DEPTH_TEST); // 开启深度测试
  
     // 获取模型
-    getModel();
+    addPianoKey();
 
     // 链接、调用着色器
     program = initShaders(gl, "vertex-shader", "fragment-shader");
@@ -206,13 +224,324 @@ window.onload = function init() {
     gl.bufferData(gl.ARRAY_BUFFER, flatten(colorArray), gl.STATIC_DRAW);
 
     var vColor = gl.getAttribLocation(program, "vColor");
-    gl.vertexAttribPointer(vColor, 3, gl.FLOAT, false, 0, 0 );
+    gl.vertexAttribPointer(vColor, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(vColor);
+
+    // 法线
+    nBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(normalArray), gl.STATIC_DRAW);
+
+    var vNormal = gl.getAttribLocation(program, "vNormal");
+    gl.vertexAttribPointer(vNormal, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vNormal); //启用对应属性
+
+    // 标记, 0一般，1是UI
+    markBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, markBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(markArray), gl.STATIC_DRAW);
+
+    var vMark = gl.getAttribLocation(program, "vMark");
+    gl.vertexAttribPointer(vMark, 1, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vMark);
     
     // UBO变量
     modelViewMatrixLoc = gl.getUniformLocation(program, "modelViewMatrix");
     projectionMatrixLoc = gl.getUniformLocation(program, "projectionMatrix");
+    cTickLoc = gl.getUniformLocation(program, "cTick");
+    rangeLoc = gl.getUniformLocation(program, "range");
+
+    render();
 }
+
+function render() {
+    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // 清楚帧缓存和深度缓冲
+
+    cPhi = lerp(cPhi, tPhi, 0.05, 0.1);
+    // 计算ubo
+    var cTick = midiPlayer != null ? midiPlayer.getTickFloat() : 0.0;
+    var range = midiPlayer != null ? (midiPlayer.getTickBySection(sectionPeroid) || 1.0) : 1.0;
+    var eye = vec3(Math.sin(angleToDeg(cPhi)), cTick, Math.cos(angleToDeg(cPhi)));
+    var at = vec3(0, cTick, 0);
+    var projectionMatrix = ortho(-1, 1, 0, range, near, far); // 平行投影
+    var modelViewMatrix = lookAt(eye, at, up);
+    gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
+    gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
+    gl.uniform1f(cTickLoc, cTick);
+    gl.uniform1f(rangeLoc, range);
+    // 绘制
+    gl.drawArrays(gl.TRIANGLES, 0, flatten(pointArray).length / 3 );
+    // 下一帧
+    requestAnimFrame(render);
+}
+
+/*
+function drawPianoKey(){
+    var canvas = document.getElementById("piano-key-canvas");
+    console.log(canvas);
+    // 128键，从c-1开始
+    var note = 0;
+    var octave = -1;
+
+    var whiteHeight = 14.4;
+    var whiteWidth = 2.2;
+    var blackHeight = 9.4;
+    var blackWidth = 1.0;
+    var interval = 0.1;
+    // 
+    // 128个键里，包含10个音阶+8个音符
+    // 含白键75个，黑键53个
+    //
+    var octaveWidth = (whiteWidth + interval) * 7;
+    var keyboardWidth = (whiteWidth + interval) * 75;
+
+    var keyList = [];
+    while(note < 128){
+        var key = note % 12;
+        var octave = Math.floor(note / 12);
+        console.log
+        var left, type;
+        switch(key){
+            case 0:{ // C
+                left = octave * octaveWidth;
+                type = "white";
+                break;
+            }
+            case 1:{ // #C
+                left = octave * octaveWidth + whiteWidth + interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 2:{ // D
+                left = octave * octaveWidth + whiteWidth + interval;
+                type = "white";
+                break;
+            }
+            case 3:{ // #D
+                left = octave * octaveWidth + 2 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 4:{ // E
+                left = octave * octaveWidth + 2 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 5:{ // F
+                left = octave * octaveWidth + 3 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 6:{ // #F
+                left = octave * octaveWidth + 4 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 7:{ // G
+                left = octave * octaveWidth + 4 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 8:{ // #G
+                left = octave * octaveWidth + 5 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 9:{ // A
+                left = octave * octaveWidth + 5 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 10:{ // #A
+                left = octave * octaveWidth + 6 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 11:{ // B
+                left = octave * octaveWidth + 6 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+        }
+
+        key = {
+            note: note,
+            left: left,
+            type: type
+        }
+        keyList.push(key);
+
+        note++;
+    }
+
+    // 绘制，先绘制白键，在绘制黑键
+    var pen = canvas.getContext("2d");
+
+    var canvasWidth = canvas.width;
+    var canvasHeight = canvas.height;
+
+    var scaleX = keyboardWidth / canvasWidth, scaleY = whiteHeight / canvasHeight;
+    for(key of keyList){
+        if (key.type != "white") continue;
+        pen.fillStyle = "#aaa";
+        pen.fillRect(key.left / scaleX, 0, whiteWidth / scaleX, whiteHeight / scaleY);
+    }
+
+    for(key of keyList){
+        if (key.type != "black") continue;
+        pen.fillStyle = "#333";
+        pen.fillRect(key.left / scaleX, 0, blackWidth / scaleX, blackHeight / scaleY);
+    }
+}
+*/
+
+function addPianoKey(){
+    // 128键，从c-1开始
+    var note = 0;
+    var octave = -1;
+
+    var whiteHeight = 14.4;
+    var whiteWidth = 2.2;
+    var blackHeight = 9.4;
+    var blackWidth = 1.0;
+    var interval = 0.1;
+    /* 
+     * 128个键里，包含10个音阶+8个音符
+     * 含白键75个，黑键53个
+    */
+    var octaveWidth = (whiteWidth + interval) * 7;
+    var keyboardWidth = (whiteWidth + interval) * 75;
+
+    var keyList = [];
+    while(note < 128){
+        var key = note % 12;
+        var octave = Math.floor(note / 12);
+        console.log
+        var left, type;
+        switch(key){
+            case 0:{ // C
+                left = octave * octaveWidth;
+                type = "white";
+                break;
+            }
+            case 1:{ // #C
+                left = octave * octaveWidth + whiteWidth + interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 2:{ // D
+                left = octave * octaveWidth + whiteWidth + interval;
+                type = "white";
+                break;
+            }
+            case 3:{ // #D
+                left = octave * octaveWidth + 2 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 4:{ // E
+                left = octave * octaveWidth + 2 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 5:{ // F
+                left = octave * octaveWidth + 3 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 6:{ // #F
+                left = octave * octaveWidth + 4 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 7:{ // G
+                left = octave * octaveWidth + 4 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 8:{ // #G
+                left = octave * octaveWidth + 5 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 9:{ // A
+                left = octave * octaveWidth + 5 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+            case 10:{ // #A
+                left = octave * octaveWidth + 6 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+                type = "black";
+                break;
+            }
+            case 11:{ // B
+                left = octave * octaveWidth + 6 * (whiteWidth + interval);
+                type = "white";
+                break;
+            }
+        }
+
+        key = {
+            note: note,
+            left: left,
+            type: type
+        }
+        keyList.push(key);
+
+        note++;
+    }
+
+    // 绘制
+    for(key of keyList){
+
+        // 横向[0, 1], 纵向[0, 1]
+        var left = key.left / keyboardWidth;
+        var top = 1;
+        if (key.type == "white"){
+            var right = (key.left + whiteWidth) / keyboardWidth;
+            var bottom = 0;
+        }
+        else{
+            var right = (key.left + blackWidth) / keyboardWidth;
+            var bottom = 1 - blackHeight / whiteHeight;
+        }
+
+        if (key.type == "white"){
+            var color = [1, 1, 1];
+            var height = 0.01;
+        }
+        else{
+            var color = [0, 0, 0];
+            var height = 0.015;
+        }
+
+        // 横向[-1, 1], 纵向[0, 1]
+        left = left * 2 - 1;
+        right = right * 2 - 1;
+            
+
+        // 添加顶点和颜色
+        var p0 = vec3(left, top, height);
+        var p1 = vec3(left, bottom, height);
+        var p2 = vec3(right, bottom, height);
+        var p3 = vec3(right, top, height);
+        var p4 = vec3(left, top, 0);
+        var p5 = vec3(left, bottom, 0);
+        var p6 = vec3(right, bottom, 0);
+        var p7 = vec3(right, top, 0);
+
+        var nFront = vec3(0, 0, 1);
+        var nLeft = vec3(-1, 0, 0);
+        var nRight = vec3(1, 0, 0);
+
+        pointArray.push([].concat(p0, p1, p2, p0, p2, p3).concat(p4, p5, p1, p4, p1, p0).concat(p3, p2, p6, p3, p6, p7));
+        colorArray.push([].concat(color, color, color, color, color, color).concat(color, color, color, color, color, color).concat(color, color, color, color, color, color));
+        normalArray.push([].concat(nFront, nFront, nFront, nFront, nFront, nFront).concat(nLeft, nLeft, nLeft, nLeft, nLeft, nLeft).concat(nRight, nRight, nRight, nRight, nRight, nRight));
+        markArray.push([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    }
+}
+
+
 
 var colorList = [];
 
@@ -223,21 +552,18 @@ function addNoteBlockModel(note, track, start, druation, velocity){
         return;
     }
 
-    // 横向[0, 1], 纵向[0, maxlength]
+    // 横向[0, 1], 纵向[0, maxTick]
     var maxNote = 128;
     var width = 1 / maxNote;
-    var tickPeriod = midiPlayer.getTickBySection(sectionPeroid) || 1;
 
     var left = note * width;
     var right = left + width;
-    var bottom = start / tickPeriod;
-    var top = bottom + druation / tickPeriod;
+    var bottom = start;
+    var top = bottom + druation;
 
-    // 横向[-1, 1], 纵向[0, maxlength]
-    var left = left * 2 - 1;
-    var right = right * 2 - 1;
-    var bottom = bottom;
-    var top = top;
+    // 横向[-1, 1], 纵向[0, maxTick]
+    left = left * 2 - 1;
+    right = right * 2 - 1;
 
     // 颜色
     var maxVelocity = 255;
@@ -245,25 +571,31 @@ function addNoteBlockModel(note, track, start, druation, velocity){
     var color = [colorList[track][0] * colorLight, colorList[track][1] * colorLight, colorList[track][2] * colorLight];
     
     // 添加顶点和颜色
-    pointArray.push([left, top, 0.0, left, bottom, 0.0, right, bottom, 0.0, left, top, 0.0, right, bottom, 0.0, right, top, 0.0]);
-    colorArray.push(color.concat(color, color, color, color, color));
+    var height = 0.009;
+    var p0 = vec3(left, top, height);
+    var p1 = vec3(left, bottom, height);
+    var p2 = vec3(right, bottom, height);
+    var p3 = vec3(right, top, height);
+    var p4 = vec3(left, top, 0);
+    var p5 = vec3(left, bottom, 0);
+    var p6 = vec3(right, bottom, 0);
+    var p7 = vec3(right, top, 0);
+
+    var nFront = vec3(0, 0, 1);
+    var nLeft = vec3(-1, 0, 0);
+    var nRight = vec3(1, 0, 0);
+
+    pointArray.push([].concat(p0, p1, p2, p0, p2, p3).concat(p4, p5, p1, p4, p1, p0).concat(p3, p2, p6, p3, p6, p7));
+    colorArray.push([].concat(color, color, color, color, color, color).concat(color, color, color, color, color, color).concat(color, color, color, color, color, color));
+    normalArray.push([].concat(nFront, nFront, nFront, nFront, nFront, nFront).concat(nLeft, nLeft, nLeft, nLeft, nLeft, nLeft).concat(nRight, nRight, nRight, nRight, nRight, nRight));
+    markArray.push([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 }
 
-function updateModel(){
-    console.log("更新3D模型");
-    getModel();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, flatten(pointArray), gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, flatten(colorArray), gl.STATIC_DRAW);
-    console.log(pointArray, colorArray);
-}
-
-function getModel(){
-    pointArray = [];
-    colorArray = [];
+function addNote(){
+    
     colorList = [];
     if (midiPlayer != null){
+
         // 生成颜色列表
         for(var i = 0; i < midiPlayer.midi.tracks.length; i++){
             var randColor = [Math.random(), Math.random(), Math.random()];
@@ -301,26 +633,37 @@ function getModel(){
     }
 }
 
-function render() {
-    if (midiPlayer == null){
-        throw("渲染停止，midi还未加载！");
+function updateModel(){
+    //console.log("更新3D模型");
+    pointArray = [];
+    colorArray = [];
+    normalArray = [];
+    markArray = [];
+
+    addPianoKey(); // 添加钢琴
+
+    // 生成颜色列表
+    colorList = [];
+    for(var i = 0; i < midiPlayer.midi.tracks.length; i++){
+        var randColor = [Math.random(), Math.random(), Math.random()];
+        colorList.push(randColor);
     }
+    addNote(); // 添加音符
 
-    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // 清楚帧缓存和深度缓冲
+    // 更新buffer数据
+    gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(pointArray), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, cBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(colorArray), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(normalArray), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, markBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(markArray), gl.STATIC_DRAW);
 
-    // 投影
-    var cTick = midiPlayer.getTickFloat();
-    var range = midiPlayer.getTickBySection(sectionPeroid) || 1;
-    var eye = vec3(0, cTick, 1);
-    var at = vec3(0, cTick, -1);
-    projectionMatrix = ortho(-1, 1, 0, range, near, far); // 平行投影
-    modelViewMatrix = lookAt(eye, at, up);
-    gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
-    gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
+    // 输出
+    //console.log(pointArray, colorArray, markArray);
+}
 
-    // 绘制
-    gl.drawArrays(gl.TRIANGLES, 0, flatten(pointArray).length / 3 );
-
-    // 下一帧
-    requestAnimFrame(render);
+function updatePhi(value){
+    tPhi = parseFloat(value);
 }
