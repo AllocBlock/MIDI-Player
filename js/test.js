@@ -394,12 +394,7 @@ function drawPianoKey(){
     }
 }
 */
-
-function addPianoKey(){
-    // 128键，从c-1开始
-    var note = 0;
-    var octave = -1;
-
+function getNoteInfo(note){
     var whiteHeight = 14.4;
     var whiteWidth = 2.2;
     var blackHeight = 9.4;
@@ -412,123 +407,121 @@ function addPianoKey(){
     var octaveWidth = (whiteWidth + interval) * 7;
     var keyboardWidth = (whiteWidth + interval) * 75;
 
-    var keyList = [];
-    while(note < 128){
-        var key = note % 12;
-        var octave = Math.floor(note / 12);
-        console.log
-        var left, type;
-        switch(key){
-            case 0:{ // C
-                left = octave * octaveWidth;
-                type = "white";
-                break;
-            }
-            case 1:{ // #C
-                left = octave * octaveWidth + whiteWidth + interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 2:{ // D
-                left = octave * octaveWidth + whiteWidth + interval;
-                type = "white";
-                break;
-            }
-            case 3:{ // #D
-                left = octave * octaveWidth + 2 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 4:{ // E
-                left = octave * octaveWidth + 2 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 5:{ // F
-                left = octave * octaveWidth + 3 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 6:{ // #F
-                left = octave * octaveWidth + 4 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 7:{ // G
-                left = octave * octaveWidth + 4 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 8:{ // #G
-                left = octave * octaveWidth + 5 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 9:{ // A
-                left = octave * octaveWidth + 5 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 10:{ // #A
-                left = octave * octaveWidth + 6 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 11:{ // B
-                left = octave * octaveWidth + 6 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-        }
+    var key = note % 12;
+    var octave = Math.floor(note / 12);
 
-        key = {
-            note: note,
-            left: left,
-            type: type
+    var left, type;
+    switch(key){
+        case 0:{ // C
+            left = octave * octaveWidth;
+            type = "white";
+            break;
         }
-        keyList.push(key);
-
-        note++;
+        case 1:{ // #C
+            left = octave * octaveWidth + whiteWidth + interval / 2 - blackWidth / 2;
+            type = "black";
+            break;
+        }
+        case 2:{ // D
+            left = octave * octaveWidth + whiteWidth + interval;
+            type = "white";
+            break;
+        }
+        case 3:{ // #D
+            left = octave * octaveWidth + 2 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+            type = "black";
+            break;
+        }
+        case 4:{ // E
+            left = octave * octaveWidth + 2 * (whiteWidth + interval);
+            type = "white";
+            break;
+        }
+        case 5:{ // F
+            left = octave * octaveWidth + 3 * (whiteWidth + interval);
+            type = "white";
+            break;
+        }
+        case 6:{ // #F
+            left = octave * octaveWidth + 4 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+            type = "black";
+            break;
+        }
+        case 7:{ // G
+            left = octave * octaveWidth + 4 * (whiteWidth + interval);
+            type = "white";
+            break;
+        }
+        case 8:{ // #G
+            left = octave * octaveWidth + 5 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+            type = "black";
+            break;
+        }
+        case 9:{ // A
+            left = octave * octaveWidth + 5 * (whiteWidth + interval);
+            type = "white";
+            break;
+        }
+        case 10:{ // #A
+            left = octave * octaveWidth + 6 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
+            type = "black";
+            break;
+        }
+        case 11:{ // B
+            left = octave * octaveWidth + 6 * (whiteWidth + interval);
+            type = "white";
+            break;
+        }
     }
 
-    // 绘制
-    for(key of keyList){
+    // 横向[0, 1], 纵向[0, 1]
+    left = left / keyboardWidth;
+    var top = 1;
+    if (type == "white"){
+        var right = left + whiteWidth / keyboardWidth;
+        var bottom = 0;
+    }
+    else{
+        var right = left + blackWidth / keyboardWidth;
+        var bottom = 1 - blackHeight / whiteHeight;
+    }
 
-        // 横向[0, 1], 纵向[0, 1]
-        var left = key.left / keyboardWidth;
-        var top = 1;
-        if (key.type == "white"){
-            var right = (key.left + whiteWidth) / keyboardWidth;
-            var bottom = 0;
-        }
-        else{
-            var right = (key.left + blackWidth) / keyboardWidth;
-            var bottom = 1 - blackHeight / whiteHeight;
-        }
+    // 横向[-1, 1], 纵向[0, 1]
+    left = left * 2 - 1;
+    right = right * 2 - 1;
 
-        if (key.type == "white"){
+    var noteInfo = {
+        note: note,
+        type: type,
+        top: top,
+        right: right,
+        bottom: bottom,
+        left: left,
+    }
+    return noteInfo;
+}
+
+function addPianoKey(){
+    // 128键，从c-1开始
+    for(var note = 0; note < 128; note++){
+        var noteInfo = getNoteInfo(note);
+        if (noteInfo.type == "white"){
             var color = [1, 1, 1];
             var height = 0.01;
         }
         else{
-            var color = [0, 0, 0];
+            var color = [0.1, 0.1, 0.1];
             var height = 0.015;
         }
-
-        // 横向[-1, 1], 纵向[0, 1]
-        left = left * 2 - 1;
-        right = right * 2 - 1;
-            
-
         // 添加顶点和颜色
-        var p0 = vec3(left, top, height);
-        var p1 = vec3(left, bottom, height);
-        var p2 = vec3(right, bottom, height);
-        var p3 = vec3(right, top, height);
-        var p4 = vec3(left, top, 0);
-        var p5 = vec3(left, bottom, 0);
-        var p6 = vec3(right, bottom, 0);
-        var p7 = vec3(right, top, 0);
+        var p0 = vec3(noteInfo.left, noteInfo.top, height);
+        var p1 = vec3(noteInfo.left, noteInfo.bottom, height);
+        var p2 = vec3(noteInfo.right, noteInfo.bottom, height);
+        var p3 = vec3(noteInfo.right, noteInfo.top, height);
+        var p4 = vec3(noteInfo.left, noteInfo.top, 0);
+        var p5 = vec3(noteInfo.left, noteInfo.bottom, 0);
+        var p6 = vec3(noteInfo.right, noteInfo.bottom, 0);
+        var p7 = vec3(noteInfo.right, noteInfo.top, 0);
 
         var nFront = vec3(0, 0, 1);
         var nLeft = vec3(-1, 0, 0);
@@ -552,22 +545,24 @@ function addNoteBlockModel(note, track, start, druation, velocity){
         return;
     }
 
-    // 横向[0, 1], 纵向[0, maxTick]
-    var maxNote = 128;
-    var width = 1 / maxNote;
+    
+    var noteInfo = getNoteInfo(note);
 
-    var left = note * width;
-    var right = left + width;
+    // 横向[-1, 1], 纵向[0, maxTick]
+    var left = noteInfo.left;
+    var right = noteInfo.right;
     var bottom = start;
     var top = bottom + druation;
 
-    // 横向[-1, 1], 纵向[0, maxTick]
-    left = left * 2 - 1;
-    right = right * 2 - 1;
-
     // 颜色
     var maxVelocity = 255;
-    var colorLight = (velocity / maxVelocity) / 2 + 0.5;
+    
+    if (noteInfo.type == "white"){
+        var colorLight = (velocity / maxVelocity) / 2 + 0.5;
+    }
+    else{
+        var colorLight = (velocity / maxVelocity) / 1.5 + 0.3;
+    }
     var color = [colorList[track][0] * colorLight, colorList[track][1] * colorLight, colorList[track][2] * colorLight];
     
     // 添加顶点和颜色
