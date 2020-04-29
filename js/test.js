@@ -162,7 +162,7 @@ const up = vec3(0.0, 1.0, 0.0); // y-up
 
 // 相机动态参数
 var cPhi = 0.0;
-var maxPhi = 15, minPhi = -15;
+var maxPhi = 45, minPhi = -45;
 var tPhi = 0.0; // 目标角度，用于实现平滑过渡
 
 
@@ -185,6 +185,15 @@ var vBuffer, cBuffer, markBuffer;
 
 window.onload = function(){
     init();
+    initEvent();
+}
+
+function initEvent(){
+    canvas = document.getElementById("gl-canvas");
+    document.onmouseup = mouseUp;
+    document.onmousemove = mouseMove;
+    canvas.onmousedown = mouseDown;
+    canvas.onmousewheel = mouseWheel;
 }
 
 function init() {
@@ -257,13 +266,18 @@ function init() {
 function render() {
     gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // 清楚帧缓存和深度缓冲
 
-    cPhi = lerp(cPhi, tPhi, 0.05, 0.1);
+    // 缓动更新
+    cPhi = lerp(cPhi, tPhi, 0.1, 0.1);
+    cOffsetX = lerp(cOffsetX, tOffsetX, 0.1, 0.0001);
+    cScaleX = lerp(cScaleX, tScaleX, 0.1, 0.001);
+    cSectionPeroid = lerp(cSectionPeroid, tSectionPeroid, 0.1, 0.001);
+    
     // 计算ubo
     var cTick = midiPlayer != null ? midiPlayer.getTickFloat() : 0.0;
-    var range = midiPlayer != null ? (midiPlayer.getTickBySection(sectionPeroid) || 1.0) : 1.0;
+    var range = midiPlayer != null ? (midiPlayer.getTickBySection(cSectionPeroid) || 1.0) : 1.0;
     var eye = vec3(Math.sin(angleToDeg(cPhi)), cTick, Math.cos(angleToDeg(cPhi)));
     var at = vec3(0, cTick, 0);
-    var projectionMatrix = ortho(-1, 1, 0, range, near, far); // 平行投影
+    var projectionMatrix = ortho(-1 / cScaleX + cOffsetX, 1  / cScaleX + cOffsetX, 0, range, near, far); // 平行投影
     var modelViewMatrix = lookAt(eye, at, up);
     gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
     gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
@@ -275,125 +289,6 @@ function render() {
     requestAnimFrame(render);
 }
 
-/*
-function drawPianoKey(){
-    var canvas = document.getElementById("piano-key-canvas");
-    console.log(canvas);
-    // 128键，从c-1开始
-    var note = 0;
-    var octave = -1;
-
-    var whiteHeight = 14.4;
-    var whiteWidth = 2.2;
-    var blackHeight = 9.4;
-    var blackWidth = 1.0;
-    var interval = 0.1;
-    // 
-    // 128个键里，包含10个音阶+8个音符
-    // 含白键75个，黑键53个
-    //
-    var octaveWidth = (whiteWidth + interval) * 7;
-    var keyboardWidth = (whiteWidth + interval) * 75;
-
-    var keyList = [];
-    while(note < 128){
-        var key = note % 12;
-        var octave = Math.floor(note / 12);
-        console.log
-        var left, type;
-        switch(key){
-            case 0:{ // C
-                left = octave * octaveWidth;
-                type = "white";
-                break;
-            }
-            case 1:{ // #C
-                left = octave * octaveWidth + whiteWidth + interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 2:{ // D
-                left = octave * octaveWidth + whiteWidth + interval;
-                type = "white";
-                break;
-            }
-            case 3:{ // #D
-                left = octave * octaveWidth + 2 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 4:{ // E
-                left = octave * octaveWidth + 2 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 5:{ // F
-                left = octave * octaveWidth + 3 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 6:{ // #F
-                left = octave * octaveWidth + 4 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 7:{ // G
-                left = octave * octaveWidth + 4 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 8:{ // #G
-                left = octave * octaveWidth + 5 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 9:{ // A
-                left = octave * octaveWidth + 5 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-            case 10:{ // #A
-                left = octave * octaveWidth + 6 * (whiteWidth + interval) - interval / 2 - blackWidth / 2;
-                type = "black";
-                break;
-            }
-            case 11:{ // B
-                left = octave * octaveWidth + 6 * (whiteWidth + interval);
-                type = "white";
-                break;
-            }
-        }
-
-        key = {
-            note: note,
-            left: left,
-            type: type
-        }
-        keyList.push(key);
-
-        note++;
-    }
-
-    // 绘制，先绘制白键，在绘制黑键
-    var pen = canvas.getContext("2d");
-
-    var canvasWidth = canvas.width;
-    var canvasHeight = canvas.height;
-
-    var scaleX = keyboardWidth / canvasWidth, scaleY = whiteHeight / canvasHeight;
-    for(key of keyList){
-        if (key.type != "white") continue;
-        pen.fillStyle = "#aaa";
-        pen.fillRect(key.left / scaleX, 0, whiteWidth / scaleX, whiteHeight / scaleY);
-    }
-
-    for(key of keyList){
-        if (key.type != "black") continue;
-        pen.fillStyle = "#333";
-        pen.fillRect(key.left / scaleX, 0, blackWidth / scaleX, blackHeight / scaleY);
-    }
-}
-*/
 function getNoteInfo(note){
     var whiteHeight = 14.4;
     var whiteWidth = 2.2;
@@ -538,7 +433,7 @@ function addPianoKey(){
 
 var colorList = [];
 
-var sectionPeroid = 4; // 显示几个小节的音符
+var cSectionPeroid = 4, tSectionPeroid = 4; // 显示几个小节的音符
 function addNoteBlockModel(note, track, start, druation, velocity){
     if (midiPlayer == null) {
         console.log("midi未加载，停止添加音符块");
@@ -559,14 +454,16 @@ function addNoteBlockModel(note, track, start, druation, velocity){
     
     if (noteInfo.type == "white"){
         var colorLight = (velocity / maxVelocity) / 2 + 0.5;
+        var height = 0.009;
     }
     else{
         var colorLight = (velocity / maxVelocity) / 1.5 + 0.3;
+        var height = 0.014;
     }
     var color = [colorList[track][0] * colorLight, colorList[track][1] * colorLight, colorList[track][2] * colorLight];
     
     // 添加顶点和颜色
-    var height = 0.009;
+    
     var p0 = vec3(left, top, height);
     var p1 = vec3(left, bottom, height);
     var p2 = vec3(right, bottom, height);
@@ -659,6 +556,71 @@ function updateModel(){
     //console.log(pointArray, colorArray, markArray);
 }
 
-function updatePhi(value){
-    tPhi = parseFloat(value);
+
+/* 交互 */
+var isDragging = false;
+var isMoving = false;
+var lastDragPos, lastMovePos;
+function mouseDown(e){
+    //console.log("down", e);
+    if (e.which == 1){ // 左键
+        isDragging = true;
+        lastDragPos = [e.screenX, e.screenY];
+    }
+    else if (e.which == 2){ // 中键
+        isMoving = true;
+        lastMovePos = [e.screenX, e.screenY];
+        e.preventDefault();
+    }
+}
+
+function mouseMove(e){
+    //console.log("move", e);
+    if (isDragging){
+        // 计算差值
+        var deltaX = e.screenX - lastDragPos[0];
+        var deltaY = e.screenY - lastDragPos[1];
+        // 处理
+        tPhi -= deltaX;
+        tPhi = Math.max(minPhi, Math.min(maxPhi, tPhi));
+        // 更新
+        lastDragPos = [e.screenX, e.screenY];
+    }
+    else if (isMoving){ // 中键
+        // 计算差值
+        var deltaX = e.screenX - lastMovePos[0];
+        var deltaY = e.screenY - lastMovePos[1];
+        // 处理
+        tOffsetX -= deltaX / 300;
+        tOffsetX = Math.max(-1, Math.min(1, tOffsetX));
+        // 更新
+        lastMovePos = [e.screenX, e.screenY];
+        e.preventDefault();
+    }
+}
+
+function mouseUp(e){
+    //console.log("up", e);
+    if (e.which == 1){ // 左键
+        isDragging = false;
+    }
+    else if (e.which == 2){ // 中键
+        isMoving = false;
+        e.preventDefault();
+    }
+}
+
+var cScaleX = 1.0, tScaleX = 1.0, cOffsetX = 0.0, tOffsetX = 0.0;
+function mouseWheel(e){
+    //console.log("wheel", e);
+    var deltaY = e.deltaY;
+    if (e.ctrlKey){ // ctrl+滚轮
+        tSectionPeroid += deltaY / 1000;
+        tSectionPeroid = Math.max(1, Math.min(16, tSectionPeroid));
+    }
+    else{ // 滚轮
+        tScaleX -= deltaY / 1000;
+        tScaleX = Math.max(1, Math.min(4, tScaleX));
+    }
+    e.preventDefault();
 }

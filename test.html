@@ -26,6 +26,9 @@
 		{
 			if(abs(vMark) <= 0.05){
 				vec3 pos = vPosition;
+				if (pos.y < cTick){
+					pos.y = cTick;
+				}
 				pos.y = pos.y + 0.1 * range;
 				gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 			}
@@ -65,7 +68,6 @@
 			<input type="button" value="播放" onclick="play()" />
 			<input type="button" value="暂停" onclick="pause()" />
 			<input type="button" value="停止" onclick="stop()" />
-			<input type="range" min="-45" max="45" value="0" oninput="updatePhi(this.value)" />
 		</div>
 		<div>
 			<canvas id="gl-canvas" width="800" height="600"></canvas>
